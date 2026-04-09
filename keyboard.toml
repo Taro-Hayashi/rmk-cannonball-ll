@@ -20,11 +20,3 @@ layers = 1
 keymap = [
     [["_", "_"]]
 ]
-
-[[input_device.pointing]]
-interface.Spi.instance = "bitbang0"
-interface.Spi.sck = "P1_10"
-interface.Spi.mosi = "P0_16"
-interface.Spi.miso = "P0_16"
-interface.Spi.cs = "P0_10"
-interface.Spi.cpi = 1200

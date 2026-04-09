@@ -4,7 +4,7 @@ use rmk::{encoder, k, layer};
 pub(crate) const COL: usize = 2;
 pub(crate) const ROW: usize = 1;
 pub(crate) const NUM_LAYER: usize = 1;
-pub(crate) const NUM_ENCODER: usize = 3;
+pub(crate) const NUM_ENCODER: usize = 1;
 // SIZE = ROW * COL (for DirectPinMatrix)
 pub(crate) const SIZE: usize = ROW * COL;
 
@@ -21,8 +21,6 @@ pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAY
     [
         [
             encoder!(k!(KbVolumeUp), k!(KbVolumeDown)), // head
-            encoder!(k!(KbVolumeUp), k!(KbVolumeDown)), // chest
-            encoder!(k!(KbVolumeUp), k!(KbVolumeDown)), // leg
         ],
     ]
 }
