@@ -21,8 +21,9 @@ keymap = [
     [["_", "_"]]
 ]
 
-[[input_device.pmw3610]]
+[[input_device.pointing]]
 name = "trackball"
+driver = "pmw3610"
 spi.instance = "bitbang0"
 spi.sck = "P1_10"
 spi.mosi = "P0_16"
