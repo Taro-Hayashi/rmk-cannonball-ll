@@ -76,9 +76,10 @@ async fn main(_spawner: Spawner) {
     let pid = spi_read_register(&mut spi, &mut cs, 0x00).await;
     let spi_ok = pid == 0x3E;
 
-    let mot = Input::new(p.P0_09, Pull::Up);
+    // MOT=None (polling mode) to rule out NFC1 pin interrupt issue
+    let mot: Option<Input<'static>> = None;
     let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
-    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, Some(mot), sensor_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
 
     // --- RMK config ---
     let storage_config = StorageConfig {
