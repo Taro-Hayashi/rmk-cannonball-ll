@@ -102,10 +102,14 @@ async fn main(_spawner: Spawner) {
     );
 
     // --- PMW3610 trackball ---
-    // SCK=P0_05 (D5), SDIO=P0_04 (D4)
+    // Disable XIAO Sense microphone (P1_08 = MIC_PWR) before using P0_16 as SDIO.
+    // The mic chip drives P0_16 (MIC_DIN) when powered, interfering with SPI.
+    let _mic_pwr = Output::new(p.P1_08, Level::Low, OutputDrive::Standard);
+
+    // SCK=P1_10 (MIC_CLK pad), SDIO=P0_16 (MIC_DIN pad) — original PCB traces to trackball
     // CS=P0_10 (NFC2), MOT=P0_09 (NFC1)
-    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
-    let sdio = NrfFlex(Flex::new(p.P0_04));
+    let sck = Output::new(p.P1_10, Level::High, OutputDrive::Standard);
+    let sdio = NrfFlex(Flex::new(p.P0_16));
     let spi = BitBangSpiBus::new(sck, sdio);
     let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
     // motion_gpio: None でポーリングモード (NFC ピン問題の切り分け用)
