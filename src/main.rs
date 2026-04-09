@@ -107,12 +107,13 @@ async fn main(_spawner: Spawner) {
     let _mic_pwr = Output::new(p.P1_08, Level::Low, OutputDrive::Standard);
 
     // SCK=P1_10 (MIC_CLK pad), SDIO=P0_16 (MIC_DIN pad) — original PCB traces to trackball
-    // CS=P0_10 (NFC2), MOT=P0_09 (NFC1)
+    // CS=P1_11 (D6, standard GPIO) — NFC pin (P0_10) 切り分け用: D6 から CS へジャンパ接続
+    // MOT=P0_09 (NFC1) — ポーリングモード
     let sck = Output::new(p.P1_10, Level::High, OutputDrive::Standard);
     let sdio = NrfFlex(Flex::new(p.P0_16));
     let spi = BitBangSpiBus::new(sck, sdio);
-    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
-    // motion_gpio: None でポーリングモード (NFC ピン問題の切り分け用)
+    let cs = Output::new(p.P1_11, Level::High, OutputDrive::Standard);
+    // motion_gpio: None でポーリングモード
     let mot: Option<Input<'static>> = None;
     let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
     let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
