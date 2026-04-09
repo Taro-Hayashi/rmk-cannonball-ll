@@ -22,14 +22,9 @@ keymap = [
 ]
 
 [[input_device.pointing]]
-name = "trackball"
-driver = "pmw3610"
-spi.instance = "bitbang0"
-spi.sck = "P1_10"
-spi.mosi = "P0_16"
-spi.miso = "P0_16"
-spi.cs = "P0_10"
-motion = "P0_09"
-cpi = 1200
-swap_xy = true
-invert_x = true
+interface.spi.instance = "bitbang0"
+interface.spi.sck = "P1_10"
+interface.spi.mosi = "P0_16"
+interface.spi.miso = "P0_16"
+interface.spi.cs = "P0_10"
+interface.spi.cpi = 1200
