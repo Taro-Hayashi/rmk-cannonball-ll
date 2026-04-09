@@ -26,7 +26,7 @@ use rmk::direct_pin::DirectPinMatrix;
 use rmk::driver::bitbang_spi::BitBangSpiBus;
 use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
-use rmk::input_device::pmw3610::Pmw3610Config;
+use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
 use rmk::input_device::pointing::PointingDevice;
 use rmk::keyboard::Keyboard;
 use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
@@ -152,7 +152,7 @@ async fn main(spawner: Spawner) {
         invert_y: false,
         ..Default::default()
     };
-    let mut pointing_device = PointingDevice::new(0, spi, cs, Some(mot), sensor_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, Some(mot), sensor_config);
 
     // --- Keyboard ---
     let storage_config = StorageConfig {
