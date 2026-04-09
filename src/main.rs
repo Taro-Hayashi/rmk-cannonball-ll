@@ -8,13 +8,11 @@ use defmt::{info, unwrap};
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_nrf::gpio::{Flex, Input, Level, Output, OutputDrive, Pull};
-use embassy_nrf::interrupt::{self, InterruptExt};
-use embassy_nrf::nvmc::Nvmc;
 use embassy_nrf::peripherals::{RNG, USBD};
 use embassy_nrf::usb::Driver;
 use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
-use embassy_nrf::{Peri, bind_interrupts, pac, rng, usb};
-use keymap::{COL, NUM_LAYER, ROW, SIZE};
+use embassy_nrf::{bind_interrupts, pac, rng, usb};
+use keymap::{COL, ROW, SIZE};
 use nrf_mpsl::Flash;
 use nrf_sdc::mpsl::MultiprotocolServiceLayer;
 use nrf_sdc::{self as sdc, mpsl};
@@ -28,9 +26,9 @@ use rmk::direct_pin::DirectPinMatrix;
 use rmk::driver::bitbang_spi::BitBangSpiBus;
 use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
-use rmk::input_device::pmw3610::{Pmw3610Config, PointingDevice};
+use rmk::input_device::pmw3610::Pmw3610Config;
+use rmk::input_device::pointing::PointingDevice;
 use rmk::keyboard::Keyboard;
-use rmk::storage::async_flash_wrapper;
 use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
@@ -109,7 +107,7 @@ async fn main(spawner: Spawner) {
         lfclk_cfg,
         SESSION_MEM.init(mpsl::SessionMem::new())
     )));
-    spawner.spawn(mpsl_task(&*mpsl)).unwrap();
+    spawner.spawn(mpsl_task(&*mpsl).unwrap());
 
     // SoftdeviceController for BLE
     let sdc_p = sdc::Peripherals::new(

@@ -1,5 +1,5 @@
 use rmk::types::action::KeyAction;
-use rmk::{a, k, layer};
+use rmk::{k, layer};
 
 pub(crate) const COL: usize = 2;
 pub(crate) const ROW: usize = 1;
@@ -11,7 +11,7 @@ pub(crate) const SIZE: usize = ROW * COL;
 pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
     [
         layer!([
-            [k!(Btn1), k!(Btn2)]
+            [k!(A), k!(B)]
         ]),
     ]
 }
