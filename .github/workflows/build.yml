@@ -41,11 +41,11 @@ jobs:
       - name: Convert to Intel HEX
         run: cargo objcopy --release -- -O ihex rmk-cannonball-ll.hex
 
-      - name: Install uf2conv
-        run: pip3 install uf2conv
+      - name: Install cargo-hex-to-uf2
+        run: cargo install cargo-hex-to-uf2
 
       - name: Convert to UF2
-        run: uf2conv rmk-cannonball-ll.hex --base 0x1000 --family 0xADA52840 --output rmk-cannonball-ll.uf2
+        run: cargo hex-to-uf2 --input-path rmk-cannonball-ll.hex --output-path rmk-cannonball-ll.uf2 --family nrf52840
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
