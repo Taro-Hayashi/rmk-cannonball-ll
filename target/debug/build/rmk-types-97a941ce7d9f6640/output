@@ -1,0 +1,3 @@
+cargo:rerun-if-changed=build.rs
+cargo:rerun-if-env-changed=KEYBOARD_TOML_PATH
+cargo:rerun-if-env-changed=VIAL_JSON_PATH

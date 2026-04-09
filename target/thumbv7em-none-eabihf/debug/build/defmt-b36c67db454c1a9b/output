@@ -1,0 +1,3 @@
+cargo:rustc-link-search=/Volumes/Primary/GitHub/rmk-cannonball-ll/target/thumbv7em-none-eabihf/debug/build/defmt-b36c67db454c1a9b/out
+cargo:rustc-check-cfg=cfg(c_variadic)
+cargo:rustc-check-cfg=cfg(no_cas)

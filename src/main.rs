@@ -5,7 +5,6 @@ mod keymap;
 mod nrf_flex;
 mod vial;
 
-use defmt::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use embassy_nrf::gpio::{Flex, Input, Level, Output, OutputDrive, Pull};
@@ -14,6 +13,8 @@ use embassy_nrf::peripherals::USBD;
 use embassy_nrf::usb::Driver;
 use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{bind_interrupts, usb};
+use embassy_time::Timer;
+use embedded_hal_async::spi::SpiBus;
 use keymap::{COL, ROW, SIZE};
 use nrf_flex::NrfFlex;
 use panic_probe as _;
@@ -28,7 +29,8 @@ use rmk::input_device::pointing::PointingDevice;
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::storage::async_flash_wrapper;
-use rmk::{KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
+use rmk::types::action::KeyAction;
+use rmk::{KeymapData, initialize_keymap_and_storage, k, run_all, run_rmk};
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 
 bind_interrupts!(struct Irqs {
@@ -40,8 +42,6 @@ const UNLOCK_KEYS: &[(u8, u8)] = &[(0, 0), (0, 1)];
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    info!("Cannonball LL RMK start (minimal debug)");
-
     let p = embassy_nrf::init(Default::default());
 
     // USB driver
@@ -66,17 +66,23 @@ async fn main(_spawner: Spawner) {
     );
 
     // --- PMW3610 trackball ---
-    // Disable XIAO Sense microphone (P1_08 = MIC_PWR) before using P0_16 as SDIO
-    let _mic_pwr = Output::new(p.P1_08, Level::Low, OutputDrive::Standard);
+    // SPI: SDIO=P0_04, SCK=P0_05, CS=P0_10(NFC2), MOT=P0_09(NFC1)
+    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
+    let sdio = NrfFlex(Flex::new(p.P0_04));
+    let mut spi = BitBangSpiBus::new(sck, sdio);
+    let mut cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
 
-    // SPI: SCK=P1_10, SDIO=P0_16, CS=P0_10(NFC2)
-    let sck = Output::new(p.P1_10, Level::High, OutputDrive::Standard);
-    let sdio = NrfFlex(Flex::new(p.P0_16));
-    let spi = BitBangSpiBus::new(sck, sdio);
-    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
-    let mot: Option<Input<'static>> = None;
+    // --- SPI diagnostic: read Product ID (expect 0x3E) ---
+    // Result is shown via key mapping:
+    //   SPI OK (0x3E) -> keys: O, K
+    //   SPI NG         -> keys: N, G
+    Timer::after_millis(50).await;
+    let pid = spi_read_register(&mut spi, &mut cs, 0x00).await;
+    let spi_ok = pid == 0x3E;
+
+    let mot = Input::new(p.P0_09, Pull::Up);
     let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
-    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, Some(mot), sensor_config);
 
     // --- RMK config ---
     let storage_config = StorageConfig {
@@ -97,8 +103,14 @@ async fn main(_spawner: Spawner) {
         ..Default::default()
     };
 
+    // Keymap: show SPI diagnostic result on key press
+    let diag_keymap: [[[KeyAction; COL]; ROW]; 1] = if spi_ok {
+        [[[k!(O), k!(K)]]]
+    } else {
+        [[[k!(N), k!(G)]]]
+    };
     let mut keymap_data = KeymapData::new_with_encoder(
-        keymap::get_default_keymap(),
+        diag_keymap,
         keymap::get_default_encoder_map(),
     );
     let mut behavior_config = BehaviorConfig::default();
@@ -120,4 +132,27 @@ async fn main(_spawner: Spawner) {
         run_rmk(&keymap, driver, &mut storage, rmk_config),
     )
     .await;
+}
+
+/// Read a single PMW3610 register via bit-bang half-duplex SPI
+async fn spi_read_register(
+    spi: &mut BitBangSpiBus<Output<'_>, NrfFlex<'_>>,
+    cs: &mut Output<'_>,
+    reg: u8,
+) -> u8 {
+    cs.set_low();
+    Timer::after_micros(1).await;
+
+    let cmd = [reg & 0x7F];
+    let _ = SpiBus::write(spi, &cmd).await;
+
+    Timer::after_micros(5).await;
+
+    let mut buf = [0u8; 1];
+    let _ = SpiBus::read(spi, &mut buf).await;
+
+    cs.set_high();
+    Timer::after_micros(2).await;
+
+    buf[0]
 }

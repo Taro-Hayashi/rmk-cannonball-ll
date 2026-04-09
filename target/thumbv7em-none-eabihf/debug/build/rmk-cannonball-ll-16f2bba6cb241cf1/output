@@ -1,0 +1,6 @@
+cargo:rerun-if-changed=vial.json
+cargo:rustc-link-search=/Volumes/Primary/GitHub/rmk-cannonball-ll/target/thumbv7em-none-eabihf/debug/build/rmk-cannonball-ll-16f2bba6cb241cf1/out
+cargo:rerun-if-changed=memory.x
+cargo:rustc-link-arg=--nmagic
+cargo:rustc-link-arg=-Tlink.x
+cargo:rustc-link-arg=-Tdefmt.x
