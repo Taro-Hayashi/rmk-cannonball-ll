@@ -27,6 +27,7 @@ embassy-executor = { version = "0.10", features = [
     "executor-thread",
 ] }
 embedded-hal = "1.0"
+embedded-hal-async = "1.0"
 defmt = "1.0"
 defmt-rtt = "1.0"
 panic-probe = { version = "1.0", features = ["print-defmt"] }
