@@ -22,6 +22,7 @@ use rmk::debounce::default_debouncer::DefaultDebouncer;
 use rmk::direct_pin::DirectPinMatrix;
 use rmk::driver::bitbang_spi::BitBangSpiBus;
 use rmk::futures::future::join3;
+use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
 use rmk::input_device::pointing::PointingDevice;
 use rmk::input_device::rotary_encoder::RotaryEncoder;
