@@ -85,10 +85,10 @@ async fn main(_spawner: Spawner) {
     let mut matrix = DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(direct_pins, debouncer, true);
 
     // --- PMW3610 trackball ---
-    // SCK=P1_13 (D8), SDIO=P1_15 (D10) — standard header pins (non-microphone)
+    // SCK=P0_05 (D5), SDIO=P0_04 (D4)
     // CS=P0_10 (NFC2), MOT=P0_09 (NFC1) — enabled by nfc-pins-as-gpio feature
-    let sck = Output::new(p.P1_13, Level::High, OutputDrive::Standard);
-    let sdio = NrfFlex(Flex::new(p.P1_15));
+    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
+    let sdio = NrfFlex(Flex::new(p.P0_04));
     let spi = BitBangSpiBus::new(sck, sdio);
     let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
     let mot = Input::new(p.P0_09, Pull::Up);
