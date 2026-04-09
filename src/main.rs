@@ -15,7 +15,7 @@ use embassy_nrf::usb::Driver;
 use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{bind_interrupts, usb};
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
-use keymap::{COL, ROW, SIZE};
+use keymap::{COL, NUM_ENCODER, ROW, SIZE};
 use panic_probe as _;
 use rmk::config::{BehaviorConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig, VialConfig};
 use rmk::debounce::default_debouncer::DefaultDebouncer;
@@ -26,6 +26,7 @@ use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
 use rmk::input_device::pointing::PointingDevice;
+use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::storage::async_flash_wrapper;
 use rmk::{KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
@@ -38,24 +39,20 @@ bind_interrupts!(struct Irqs {
 
 const UNLOCK_KEYS: &[(u8, u8)] = &[(0, 0), (0, 1)];
 
-/// Newtype wrapper so we can implement FlexPin for embassy_nrf::gpio::Flex
-/// (orphan rule prevents implementing foreign traits on foreign types directly)
+/// Newtype wrapper: FlexPin impl for embassy_nrf::gpio::Flex (orphan rule workaround)
 struct NrfFlex<'d>(Flex<'d>);
 
 impl<'d> ErrorType for NrfFlex<'d> {
     type Error = Infallible;
 }
-
 impl<'d> InputPin for NrfFlex<'d> {
     fn is_high(&mut self) -> Result<bool, Infallible> { Ok(self.0.is_high()) }
     fn is_low(&mut self) -> Result<bool, Infallible> { Ok(self.0.is_low()) }
 }
-
 impl<'d> OutputPin for NrfFlex<'d> {
     fn set_high(&mut self) -> Result<(), Infallible> { self.0.set_high(); Ok(()) }
     fn set_low(&mut self) -> Result<(), Infallible> { self.0.set_low(); Ok(()) }
 }
-
 impl<'d> FlexPin for NrfFlex<'d> {
     fn set_as_input(&mut self) { self.0.set_as_input(Pull::Down); }
     fn set_as_output(&mut self) {
@@ -84,19 +81,35 @@ async fn main(_spawner: Spawner) {
     let debouncer = DefaultDebouncer::new();
     let mut matrix = DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(direct_pins, debouncer, true);
 
+    // --- Rotary encoders ---
+    // head  (enc 0): A=P0_02/D0, B=P0_03/D1
+    // chest (enc 1): A=P1_15/D10, B=P1_14/D9
+    // leg   (enc 2): A=P1_13/D8,  B=P1_12/D7
+    let mut enc_head = RotaryEncoder::new(
+        Input::new(p.P0_02, Pull::Up),
+        Input::new(p.P0_03, Pull::Up),
+        0,
+    );
+    let mut enc_chest = RotaryEncoder::new(
+        Input::new(p.P1_15, Pull::Up),
+        Input::new(p.P1_14, Pull::Up),
+        1,
+    );
+    let mut enc_leg = RotaryEncoder::new(
+        Input::new(p.P1_13, Pull::Up),
+        Input::new(p.P1_12, Pull::Up),
+        2,
+    );
+
     // --- PMW3610 trackball ---
     // SCK=P0_05 (D5), SDIO=P0_04 (D4)
-    // CS=P0_10 (NFC2), MOT=P0_09 (NFC1) — enabled by nfc-pins-as-gpio feature
+    // CS=P0_10 (NFC2), MOT=P0_09 (NFC1)
     let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
     let sdio = NrfFlex(Flex::new(p.P0_04));
     let spi = BitBangSpiBus::new(sck, sdio);
     let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
     let mot = Input::new(p.P0_09, Pull::Up);
-
-    let sensor_config = Pmw3610Config {
-        res_cpi: 1200,
-        ..Default::default()
-    };
+    let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
     let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, Some(mot), sensor_config);
 
     // --- RMK config ---
@@ -118,7 +131,10 @@ async fn main(_spawner: Spawner) {
         ..Default::default()
     };
 
-    let mut keymap_data = KeymapData::new(keymap::get_default_keymap());
+    let mut keymap_data = KeymapData::new_with_encoder(
+        keymap::get_default_keymap(),
+        keymap::get_default_encoder_map(),
+    );
     let mut behavior_config = BehaviorConfig::default();
     let per_key_config = PositionalConfig::default();
     let (keymap, mut storage) = initialize_keymap_and_storage(
@@ -133,7 +149,7 @@ async fn main(_spawner: Spawner) {
     let mut keyboard = Keyboard::new(&keymap);
 
     join3(
-        run_all!(matrix, pointing_device),
+        run_all!(matrix, enc_head, enc_chest, enc_leg, pointing_device),
         keyboard.run(),
         run_rmk(&keymap, driver, &mut storage, rmk_config),
     )
