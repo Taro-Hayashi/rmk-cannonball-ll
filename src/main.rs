@@ -108,9 +108,10 @@ async fn main(_spawner: Spawner) {
     let sdio = NrfFlex(Flex::new(p.P0_04));
     let spi = BitBangSpiBus::new(sck, sdio);
     let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
-    let mot = Input::new(p.P0_09, Pull::Up);
+    // motion_gpio: None でポーリングモード (NFC ピン問題の切り分け用)
+    let mot: Option<Input<'static>> = None;
     let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
-    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, Some(mot), sensor_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
 
     // --- RMK config ---
     let storage_config = StorageConfig {
