@@ -1,11 +1,11 @@
 # Documentation: https://rmk.rs/docs/configuration.html
 [keyboard]
-name = "RMK Keyboard"
-product_name = "RMK Keyboard"
-vendor_id = 0x4c4b
-product_id = 0x4643
-manufacturer = "RMK"
-chip = "rp2040"
+name = "Cannonball LL"
+product_name = "Cannonball LL"
+vendor_id = 0x8884
+product_id = 0x0907
+manufacturer = "Taro Hayashi"
+chip = "nrf52840"
 
 [matrix]
 # Row and col pins are mandatory
