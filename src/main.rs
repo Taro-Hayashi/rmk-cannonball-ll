@@ -29,7 +29,6 @@ use rmk::input_device::pointing::PointingDevice;
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::storage::async_flash_wrapper;
-use rmk::types::action::KeyAction;
 use rmk::{KeymapData, initialize_keymap_and_storage, k, run_all, run_rmk};
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 
@@ -50,11 +49,8 @@ async fn main(_spawner: Spawner) {
     // Internal flash
     let flash = async_flash_wrapper(Nvmc::new(p.NVMC));
 
-    // --- Direct-pin matrix (2 keys, temporary) ---
-    let direct_pins: [[Option<Input>; COL]; ROW] = [[
-        Some(Input::new(p.P0_28, Pull::Up)),
-        Some(Input::new(p.P0_29, Pull::Up)),
-    ]];
+    // --- Direct-pin matrix (no physical buttons, placeholders) ---
+    let direct_pins: [[Option<Input>; COL]; ROW] = [[None, None]];
     let debouncer = DefaultDebouncer::new();
     let mut matrix = DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(direct_pins, debouncer, true);
 
@@ -103,15 +99,19 @@ async fn main(_spawner: Spawner) {
         ..Default::default()
     };
 
-    // Keymap: show SPI diagnostic result on key press
-    let diag_keymap: [[[KeyAction; COL]; ROW]; 1] = if spi_ok {
-        [[[k!(O), k!(K)]]]
+    // Diagnostic: encoder behavior changes based on SPI result
+    //   SPI OK (0x3E) -> Volume Up/Down (normal)
+    //   SPI NG        -> Page Up/Down (clearly different)
+    use rmk::types::action::EncoderAction;
+    use rmk::encoder;
+    let diag_encoder: [[EncoderAction; 1]; 1] = if spi_ok {
+        [[encoder!(k!(KbVolumeUp), k!(KbVolumeDown))]]
     } else {
-        [[[k!(N), k!(G)]]]
+        [[encoder!(k!(PageUp), k!(PageDown))]]
     };
     let mut keymap_data = KeymapData::new_with_encoder(
-        diag_keymap,
-        keymap::get_default_encoder_map(),
+        keymap::get_default_keymap(),
+        diag_encoder,
     );
     let mut behavior_config = BehaviorConfig::default();
     let per_key_config = PositionalConfig::default();
