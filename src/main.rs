@@ -143,20 +143,20 @@ async fn spi_read_register(
     cs: &mut Output<'_>,
     reg: u8,
 ) -> u8 {
-    use embedded_hal::spi::SpiBus;
+    use embedded_hal_async::spi::SpiBus;
 
     cs.set_low();
     Timer::after_micros(1).await;
 
     // Send read command (bit 7 = 0 for read)
     let cmd = [reg & 0x7F];
-    let _ = SpiBus::write(spi, &cmd);
+    let _ = SpiBus::write(spi, &cmd).await;
 
     // t_SRAD: wait for data ready (PMW3610 datasheet: ~4us)
     Timer::after_micros(5).await;
 
     let mut buf = [0u8; 1];
-    let _ = SpiBus::read(spi, &mut buf);
+    let _ = SpiBus::read(spi, &mut buf).await;
 
     cs.set_high();
     Timer::after_micros(2).await;
