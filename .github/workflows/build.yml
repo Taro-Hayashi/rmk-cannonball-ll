@@ -1,4 +1,5 @@
 name: Build RMK firmware
+
 on:
   workflow_dispatch:
   push:
@@ -7,7 +8,49 @@ on:
 
 jobs:
   build:
-    uses: haobogu/rmk/.github/workflows/user_build.yml@main
-    with:
-      keyboard_toml_path: "keyboard.toml"
-      vial_json_path: "vial.json"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabihf
+          components: llvm-tools
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install flip-link
+        run: cargo install flip-link
+
+      - name: Install cargo-binutils
+        run: cargo install cargo-binutils
+
+      - name: Build firmware
+        run: cargo build --release
+
+      - name: Convert to Intel HEX
+        run: cargo objcopy --release -- -O ihex rmk-cannonball-ll.hex
+
+      - name: Install uf2conv
+        run: pip3 install uf2conv
+
+      - name: Convert to UF2
+        run: uf2conv rmk-cannonball-ll.hex --base 0x1000 --family 0xADA52840 --output rmk-cannonball-ll.uf2
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rmk-cannonball-ll-firmware
+          path: |
+            rmk-cannonball-ll.hex
+            rmk-cannonball-ll.uf2
