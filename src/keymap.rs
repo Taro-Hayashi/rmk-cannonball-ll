@@ -20,9 +20,9 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
 pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAYER] {
     [
         [
-            encoder!(k!(Kb1), k!(Kb2)), // head
-            encoder!(k!(Kb3), k!(Kb4)), // chest
-            encoder!(k!(Kb5), k!(Kb6)), // leg
+            encoder!(k!(Kc1), k!(Kc2)), // head
+            encoder!(k!(Kc3), k!(Kc4)), // chest
+            encoder!(k!(Kc5), k!(Kc6)), // leg
         ],
     ]
 }
