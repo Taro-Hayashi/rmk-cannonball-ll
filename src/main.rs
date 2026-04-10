@@ -176,6 +176,7 @@ async fn main(spawner: Spawner) {
     let storage_config = StorageConfig {
         start_addr: 0xA0000,
         num_sectors: 6,
+        clear_storage: true,
         ..Default::default()
     };
     let ble_battery_config = BleBatteryConfig::default();
