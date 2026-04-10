@@ -128,9 +128,8 @@ async fn main(spawner: Spawner) {
     let sdc = unwrap!(build_sdc(sdc_p, rng_inst, mpsl, sdc_mem));
 
     // --- BLE stack ---
-    static HOST_RESOURCES: StaticCell<HostResources> = StaticCell::new();
-    let host_resources = HOST_RESOURCES.init(HostResources::new());
-    let stack = build_ble_stack(sdc, ble_addr(), &mut rng_gen, host_resources).await;
+    let mut host_resources = HostResources::new();
+    let stack = build_ble_stack(sdc, ble_addr(), &mut rng_gen, &mut host_resources).await;
 
     // USB driver
     let driver = Driver::new(p.USBD, Irqs, HardwareVbusDetect::new(Irqs));
