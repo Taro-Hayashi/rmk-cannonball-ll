@@ -23,7 +23,7 @@ use rmk::driver::bitbang_spi::BitBangSpiBus;
 use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
-use rmk::input_device::pointing::{PointingDevice, PointingDriver};
+use rmk::input_device::pointing::{InitState, PointingDevice, PointingDriver};
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::storage::async_flash_wrapper;
@@ -59,15 +59,17 @@ async fn main(_spawner: Spawner) {
     let sdio = NrfFlex(Flex::new(p.P0_04));
     let spi = BitBangSpiBus::new(sck, sdio);
     let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
-    let mot = Input::new(p.P0_09, Pull::Up);
+    // MOT=None: NFC1 pin (P0_09) doesn't support GPIOTE interrupt reliably,
+    // use polling mode instead
+    let mot: Option<Input<'static>> = None;
     let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
-    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, Some(mot), sensor_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
 
-    // --- Diagnostic: manually call driver init and check result ---
-    // Encoder behavior tells you the result:
-    //   Init OK  -> Volume Up/Down
-    //   Init NG  -> Page Up/Down
+    // Manually init the sensor and mark as Ready to prevent double init
     let init_ok = pointing_device.sensor.init().await.is_ok();
+    if init_ok {
+        pointing_device.init_state = InitState::Ready;
+    }
 
     let mut enc_head = RotaryEncoder::new(
         Input::new(p.P0_02, Pull::Up),
