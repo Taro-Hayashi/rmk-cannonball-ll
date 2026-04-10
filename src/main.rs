@@ -5,6 +5,8 @@ mod keymap;
 mod nrf_flex;
 mod vial;
 
+use core::cell::RefCell;
+
 use defmt::unwrap;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
@@ -13,7 +15,7 @@ use embassy_nrf::peripherals::{RNG, USBD};
 use embassy_nrf::usb::Driver;
 use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{bind_interrupts, pac, rng, usb};
-use keymap::{COL, ROW, SIZE};
+use keymap::{COL, ROW};
 use nrf_flex::NrfFlex;
 use nrf_mpsl::Flash;
 use nrf_sdc::mpsl::MultiprotocolServiceLayer;
@@ -27,14 +29,15 @@ use rmk::config::{
     VialConfig,
 };
 use rmk::debounce::default_debouncer::DefaultDebouncer;
-use rmk::direct_pin::DirectPinMatrix;
 use rmk::driver::bitbang_spi::BitBangSpiBus;
+use rmk::driver::shared_spi::SharedSpiBus;
 use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
 use rmk::input_device::pointing::{PointingDevice, PointingProcessor, PointingProcessorConfig};
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
+use rmk::shift_register::ShiftRegisterMatrix;
 use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
@@ -137,10 +140,26 @@ async fn main(spawner: Spawner) {
     // Internal flash (MPSL-aware)
     let flash = Flash::take(mpsl, p.NVMC);
 
-    // --- Direct-pin matrix (no physical buttons) ---
-    let direct_pins: [[Option<Input>; COL]; ROW] = [[None, None]];
+    // --- Shared SPI bus (595 + PMW3610) ---
+    // SCK = P0_05 (D5), SDIO = P0_04 (D4)
+    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
+    let sdio = NrfFlex(Flex::new(p.P0_04));
+    let spi = BitBangSpiBus::new(sck, sdio);
+    static SPI_BUS: StaticCell<RefCell<BitBangSpiBus<Output<'static>, NrfFlex<'static>>>> =
+        StaticCell::new();
+    let spi_bus = SPI_BUS.init(RefCell::new(spi));
+
+    // --- 74HC595 shift register matrix ---
+    // CS/Latch = P1_11 (D6), Rows = P0_28 (D2), P0_29 (D3)
+    let sr_cs = Output::new(p.P1_11, Level::High, OutputDrive::Standard);
+    let row_pins = [
+        Input::new(p.P0_28, Pull::Down),
+        Input::new(p.P0_29, Pull::Down),
+    ];
     let debouncer = DefaultDebouncer::new();
-    let mut matrix = DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(direct_pins, debouncer, true);
+    let spi_for_sr = SharedSpiBus::new(spi_bus);
+    let mut matrix =
+        ShiftRegisterMatrix::<_, _, _, _, ROW, COL>::new(spi_for_sr, sr_cs, row_pins, debouncer);
 
     // --- Rotary encoders ---
     let mut enc_head = RotaryEncoder::new(
@@ -160,17 +179,16 @@ async fn main(spawner: Spawner) {
     );
 
     // --- PMW3610 trackball ---
-    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
-    let sdio = NrfFlex(Flex::new(p.P0_04));
-    let spi = BitBangSpiBus::new(sck, sdio);
-    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
+    // CS = P0_10 (NFC2)
+    let tb_cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
     let mot: Option<Input<'static>> = None;
     let sensor_config = Pmw3610Config {
         res_cpi: 1200,
         ..Default::default()
     };
+    let spi_for_tb = SharedSpiBus::new(spi_bus);
     let mut pointing_device =
-        PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
+        PointingDevice::<Pmw3610<_, _, _>>::new(0, spi_for_tb, tb_cs, mot, sensor_config);
 
     // --- RMK config ---
     let storage_config = StorageConfig {
