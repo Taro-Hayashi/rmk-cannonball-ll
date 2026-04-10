@@ -62,7 +62,7 @@ async fn mpsl_task(mpsl: &'static MultiprotocolServiceLayer<'static>) -> ! {
 
 fn build_sdc<'d, const N: usize>(
     p: nrf_sdc::Peripherals<'d>,
-    rng: &'d mut rng::Rng<'d, rng::mode::Async>,
+    rng: &'d mut rng::Rng<'d, embassy_nrf::mode::Async>,
     mpsl: &'d MultiprotocolServiceLayer,
     mem: &'d mut sdc::Mem<N>,
 ) -> Result<nrf_sdc::SoftdeviceController<'d>, nrf_sdc::Error> {
@@ -113,7 +113,7 @@ async fn main(spawner: Spawner) {
         lfclk_cfg,
         SESSION_MEM.init(mpsl::SessionMem::new()),
     )));
-    spawner.spawn(mpsl_task(&*mpsl)).unwrap();
+    spawner.spawn(mpsl_task(&*mpsl).unwrap());
 
     // --- SDC (SoftDevice Controller) ---
     let sdc_p = sdc::Peripherals::new(
