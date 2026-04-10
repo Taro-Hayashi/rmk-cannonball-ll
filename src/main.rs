@@ -160,6 +160,7 @@ async fn main(spawner: Spawner) {
     let spi_for_sr = SharedSpiBus::new(spi_bus);
     let mut matrix =
         ShiftRegisterMatrix::<_, _, _, _, ROW, COL>::new(spi_for_sr, sr_cs, row_pins, debouncer);
+    matrix.init().await;
 
     // --- Rotary encoders ---
     let mut enc_head = RotaryEncoder::new(
