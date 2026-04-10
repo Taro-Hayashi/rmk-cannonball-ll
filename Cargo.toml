@@ -5,7 +5,7 @@ edition = "2024"
 description = "Cannonball LL keyboard firmware (RMK)"
 
 [dependencies]
-rmk = { path = "../../rmk/rmk", features = [
+rmk = { git = "https://github.com/Taro-Hayashi/rmk.git", rev = "438b8b4e", features = [
     "async_matrix",
     "nrf52840_ble",
 ] }
