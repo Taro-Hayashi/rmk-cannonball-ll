@@ -142,11 +142,21 @@ async fn main(spawner: Spawner) {
     let debouncer = DefaultDebouncer::new();
     let mut matrix = DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(direct_pins, debouncer, true);
 
-    // --- Rotary encoder (head) ---
+    // --- Rotary encoders ---
     let mut enc_head = RotaryEncoder::new(
         Input::new(p.P0_02, Pull::Up),
         Input::new(p.P0_03, Pull::Up),
         0,
+    );
+    let mut enc_chest = RotaryEncoder::new(
+        Input::new(p.P0_26, Pull::Up),
+        Input::new(p.P0_17, Pull::Up),
+        1,
+    );
+    let mut enc_leg = RotaryEncoder::new(
+        Input::new(p.P0_15, Pull::Up),
+        Input::new(p.P0_13, Pull::Up),
+        2,
     );
 
     // --- PMW3610 trackball ---
@@ -203,7 +213,7 @@ async fn main(spawner: Spawner) {
         PointingProcessor::new(&keymap, PointingProcessorConfig::default());
 
     join3(
-        run_all!(matrix, enc_head, pointing_device, pointing_processor),
+        run_all!(matrix, enc_head, enc_chest, enc_leg, pointing_device, pointing_processor),
         keyboard.run(),
         run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
     )
