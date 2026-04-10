@@ -120,14 +120,17 @@ async fn main(spawner: Spawner) {
         p.PPI_CH17, p.PPI_CH18, p.PPI_CH20, p.PPI_CH21, p.PPI_CH22, p.PPI_CH23,
         p.PPI_CH24, p.PPI_CH25, p.PPI_CH26, p.PPI_CH27, p.PPI_CH28, p.PPI_CH29,
     );
-    let mut rng_inst = rng::Rng::new(p.RNG, Irqs);
-    let mut rng_gen = ChaCha12Rng::from_rng(&mut rng_inst).unwrap();
-    let mut sdc_mem = sdc::Mem::<4096>::new();
-    let sdc = unwrap!(build_sdc(sdc_p, &mut rng_inst, mpsl, &mut sdc_mem));
+    static RNG_INST: StaticCell<rng::Rng<'static, embassy_nrf::mode::Async>> = StaticCell::new();
+    let rng_inst = RNG_INST.init(rng::Rng::new(p.RNG, Irqs));
+    let mut rng_gen = ChaCha12Rng::from_rng(&mut *rng_inst).unwrap();
+    static SDC_MEM: StaticCell<sdc::Mem<4096>> = StaticCell::new();
+    let sdc_mem = SDC_MEM.init(sdc::Mem::<4096>::new());
+    let sdc = unwrap!(build_sdc(sdc_p, rng_inst, mpsl, sdc_mem));
 
     // --- BLE stack ---
-    let mut host_resources = HostResources::new();
-    let stack = build_ble_stack(sdc, ble_addr(), &mut rng_gen, &mut host_resources).await;
+    static HOST_RESOURCES: StaticCell<HostResources> = StaticCell::new();
+    let host_resources = HOST_RESOURCES.init(HostResources::new());
+    let stack = build_ble_stack(sdc, ble_addr(), &mut rng_gen, host_resources).await;
 
     // USB driver
     let driver = Driver::new(p.USBD, Irqs, HardwareVbusDetect::new(Irqs));
