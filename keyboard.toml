@@ -13,6 +13,10 @@ chip = "nrf52840"
 matrix_type = "direct_pin"
 direct_pins = [["P0_28", "P0_29"]]
 
+[ble]
+enabled = true
+battery_adc_pin = "vddh"
+
 [layout]
 rows = 1
 cols = 2
