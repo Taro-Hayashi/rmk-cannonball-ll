@@ -23,12 +23,11 @@ use rmk::driver::bitbang_spi::BitBangSpiBus;
 use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
-use rmk::input_device::pointing::{InitState, PointingDevice, PointingDriver, PointingProcessor, PointingProcessorConfig};
+use rmk::input_device::pointing::{PointingDevice, PointingProcessor, PointingProcessorConfig};
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::storage::async_flash_wrapper;
-use rmk::{KeymapData, encoder, initialize_keymap_and_storage, k, run_all, run_rmk};
-use rmk::types::action::EncoderAction;
+use rmk::{KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 
 bind_interrupts!(struct Irqs {
@@ -53,35 +52,23 @@ async fn main(_spawner: Spawner) {
     let debouncer = DefaultDebouncer::new();
     let mut matrix = DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(direct_pins, debouncer, true);
 
-    // --- PMW3610 trackball ---
-    // SPI: SDIO=P0_04, SCK=P0_05, CS=P0_10(NFC2), MOT=P0_09(NFC1)
-    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
-    let sdio = NrfFlex(Flex::new(p.P0_04));
-    let spi = BitBangSpiBus::new(sck, sdio);
-    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
-    // MOT=None: NFC1 pin (P0_09) doesn't support GPIOTE interrupt reliably,
-    // use polling mode instead
-    let mot: Option<Input<'static>> = None;
-    let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
-    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
-
-    // Manually init the sensor and mark as Ready to prevent double init
-    let init_ok = pointing_device.sensor.init().await.is_ok();
-    if init_ok {
-        pointing_device.init_state = InitState::Ready;
-    }
-
+    // --- Rotary encoder (head) ---
     let mut enc_head = RotaryEncoder::new(
         Input::new(p.P0_02, Pull::Up),
         Input::new(p.P0_03, Pull::Up),
         0,
     );
 
-    let diag_encoder: [[EncoderAction; 1]; 1] = if init_ok {
-        [[encoder!(k!(KbVolumeUp), k!(KbVolumeDown))]]
-    } else {
-        [[encoder!(k!(PageUp), k!(PageDown))]]
-    };
+    // --- PMW3610 trackball ---
+    // SPI: SDIO=P0_04, SCK=P0_05, CS=P0_10(NFC2)
+    // MOT=None: NFC1 pin (P0_09) doesn't support GPIOTE interrupt, use polling
+    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
+    let sdio = NrfFlex(Flex::new(p.P0_04));
+    let spi = BitBangSpiBus::new(sck, sdio);
+    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
+    let mot: Option<Input<'static>> = None;
+    let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
 
     // --- RMK config ---
     let storage_config = StorageConfig {
@@ -104,7 +91,7 @@ async fn main(_spawner: Spawner) {
 
     let mut keymap_data = KeymapData::new_with_encoder(
         keymap::get_default_keymap(),
-        diag_encoder,
+        keymap::get_default_encoder_map(),
     );
     let mut behavior_config = BehaviorConfig::default();
     let per_key_config = PositionalConfig::default();
