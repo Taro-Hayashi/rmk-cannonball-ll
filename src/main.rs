@@ -23,7 +23,7 @@ use rmk::driver::bitbang_spi::BitBangSpiBus;
 use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
-use rmk::input_device::pointing::{InitState, PointingDevice, PointingDriver};
+use rmk::input_device::pointing::{InitState, PointingDevice, PointingDriver, PointingProcessor, PointingProcessorConfig};
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::storage::async_flash_wrapper;
@@ -118,9 +118,10 @@ async fn main(_spawner: Spawner) {
     .await;
 
     let mut keyboard = Keyboard::new(&keymap);
+    let mut pointing_processor = PointingProcessor::new(&keymap, PointingProcessorConfig::default());
 
     join3(
-        run_all!(matrix, enc_head, pointing_device),
+        run_all!(matrix, enc_head, pointing_device, pointing_processor),
         keyboard.run(),
         run_rmk(&keymap, driver, &mut storage, rmk_config),
     )
