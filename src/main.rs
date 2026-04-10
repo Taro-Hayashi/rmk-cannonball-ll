@@ -13,8 +13,6 @@ use embassy_nrf::peripherals::USBD;
 use embassy_nrf::usb::Driver;
 use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{bind_interrupts, usb};
-use embassy_time::Timer;
-use embedded_hal_async::spi::SpiBus;
 use keymap::{COL, ROW, SIZE};
 use nrf_flex::NrfFlex;
 use panic_probe as _;
@@ -29,7 +27,7 @@ use rmk::input_device::pointing::PointingDevice;
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::storage::async_flash_wrapper;
-use rmk::{KeymapData, initialize_keymap_and_storage, k, run_all, run_rmk};
+use rmk::{KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 
 bind_interrupts!(struct Irqs {
@@ -49,12 +47,12 @@ async fn main(_spawner: Spawner) {
     // Internal flash
     let flash = async_flash_wrapper(Nvmc::new(p.NVMC));
 
-    // --- Direct-pin matrix (no physical buttons, placeholders) ---
+    // --- Direct-pin matrix (no physical buttons) ---
     let direct_pins: [[Option<Input>; COL]; ROW] = [[None, None]];
     let debouncer = DefaultDebouncer::new();
     let mut matrix = DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(direct_pins, debouncer, true);
 
-    // --- Rotary encoder (head only, for sanity check) ---
+    // --- Rotary encoder (head only) ---
     let mut enc_head = RotaryEncoder::new(
         Input::new(p.P0_02, Pull::Up),
         Input::new(p.P0_03, Pull::Up),
@@ -65,21 +63,11 @@ async fn main(_spawner: Spawner) {
     // SPI: SDIO=P0_04, SCK=P0_05, CS=P0_10(NFC2), MOT=P0_09(NFC1)
     let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
     let sdio = NrfFlex(Flex::new(p.P0_04));
-    let mut spi = BitBangSpiBus::new(sck, sdio);
-    let mut cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
-
-    // --- SPI diagnostic: read Product ID (expect 0x3E) ---
-    // Result is shown via key mapping:
-    //   SPI OK (0x3E) -> keys: O, K
-    //   SPI NG         -> keys: N, G
-    Timer::after_millis(50).await;
-    let pid = spi_read_register(&mut spi, &mut cs, 0x00).await;
-    let spi_ok = pid == 0x3E;
-
-    // MOT=None (polling mode) to rule out NFC1 pin interrupt issue
-    let mot: Option<Input<'static>> = None;
+    let spi = BitBangSpiBus::new(sck, sdio);
+    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
+    let mot = Input::new(p.P0_09, Pull::Up);
     let sensor_config = Pmw3610Config { res_cpi: 1200, ..Default::default() };
-    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, mot, sensor_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::new(0, spi, cs, Some(mot), sensor_config);
 
     // --- RMK config ---
     let storage_config = StorageConfig {
@@ -100,19 +88,9 @@ async fn main(_spawner: Spawner) {
         ..Default::default()
     };
 
-    // Diagnostic: encoder behavior changes based on SPI result
-    //   SPI OK (0x3E) -> Volume Up/Down (normal)
-    //   SPI NG        -> Page Up/Down (clearly different)
-    use rmk::types::action::EncoderAction;
-    use rmk::encoder;
-    let diag_encoder: [[EncoderAction; 1]; 1] = if spi_ok {
-        [[encoder!(k!(KbVolumeUp), k!(KbVolumeDown))]]
-    } else {
-        [[encoder!(k!(PageUp), k!(PageDown))]]
-    };
     let mut keymap_data = KeymapData::new_with_encoder(
         keymap::get_default_keymap(),
-        diag_encoder,
+        keymap::get_default_encoder_map(),
     );
     let mut behavior_config = BehaviorConfig::default();
     let per_key_config = PositionalConfig::default();
@@ -133,27 +111,4 @@ async fn main(_spawner: Spawner) {
         run_rmk(&keymap, driver, &mut storage, rmk_config),
     )
     .await;
-}
-
-/// Read a single PMW3610 register via bit-bang half-duplex SPI
-async fn spi_read_register(
-    spi: &mut BitBangSpiBus<Output<'_>, NrfFlex<'_>>,
-    cs: &mut Output<'_>,
-    reg: u8,
-) -> u8 {
-    cs.set_low();
-    Timer::after_micros(1).await;
-
-    let cmd = [reg & 0x7F];
-    let _ = SpiBus::write(spi, &cmd).await;
-
-    Timer::after_micros(5).await;
-
-    let mut buf = [0u8; 1];
-    let _ = SpiBus::read(spi, &mut buf).await;
-
-    cs.set_high();
-    Timer::after_micros(2).await;
-
-    buf[0]
 }
