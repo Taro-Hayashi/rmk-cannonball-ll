@@ -149,13 +149,13 @@ async fn main(spawner: Spawner) {
         0,
     );
     let mut enc_chest = RotaryEncoder::new(
-        Input::new(p.P0_26, Pull::Up),
-        Input::new(p.P0_17, Pull::Up),
+        Input::new(p.P1_15, Pull::Up),
+        Input::new(p.P1_14, Pull::Up),
         1,
     );
     let mut enc_leg = RotaryEncoder::new(
-        Input::new(p.P0_15, Pull::Up),
-        Input::new(p.P0_13, Pull::Up),
+        Input::new(p.P1_13, Pull::Up),
+        Input::new(p.P1_12, Pull::Up),
         2,
     );
 
@@ -176,7 +176,7 @@ async fn main(spawner: Spawner) {
     let storage_config = StorageConfig {
         start_addr: 0xA0000,
         num_sectors: 6,
-        clear_storage: true,
+        clear_storage: cfg!(feature = "reset"),
         ..Default::default()
     };
     let ble_battery_config = BleBatteryConfig::default();

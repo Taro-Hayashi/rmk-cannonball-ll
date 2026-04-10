@@ -53,6 +53,9 @@ xz2 = "0.1.7"
 json = "0.12"
 const-gen = "1.6"
 
+[features]
+reset = []
+
 [[bin]]
 name = "rmk-cannonball-ll"
 test = false
