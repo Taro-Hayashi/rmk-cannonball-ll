@@ -4,8 +4,13 @@ version = "0.1.0"
 edition = "2024"
 description = "Cannonball LL keyboard firmware (RMK)"
 
+[features]
+default = []
+reset-storage = []
+sensor-rotated-180 = []
+
 [dependencies]
-rmk = { git = "https://github.com/Taro-Hayashi/rmk.git", rev = "438b8b4e", features = [
+rmk = { git = "https://github.com/Taro-Hayashi/rmk", rev = "ffd847a58e9f01ae37cd52a70b6d0beb8b8a0659", features = [
     "async_matrix",
     "nrf52840_ble",
 ] }
@@ -52,9 +57,6 @@ rand_chacha = { version = "0.3", default-features = false }
 xz2 = "0.1.7"
 json = "0.12"
 const-gen = "1.6"
-
-[features]
-reset = []
 
 [[bin]]
 name = "rmk-cannonball-ll"

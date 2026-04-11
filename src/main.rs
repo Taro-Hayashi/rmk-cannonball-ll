@@ -1,11 +1,11 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
+
 mod keymap;
 mod nrf_flex;
 mod vial;
-
-use core::cell::RefCell;
 
 use defmt::unwrap;
 use defmt_rtt as _;
@@ -28,7 +28,7 @@ use rmk::config::{
     BehaviorConfig, BleBatteryConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig,
     VialConfig,
 };
-use rmk::debounce::default_debouncer::DefaultDebouncer;
+use rmk::debounce::fast_debouncer::FastDebouncer;
 use rmk::driver::bitbang_spi::BitBangSpiBus;
 use rmk::driver::shared_spi::SharedSpiBus;
 use rmk::futures::future::join3;
@@ -57,6 +57,12 @@ const UNLOCK_KEYS: &[(u8, u8)] = &[(0, 0), (0, 1)];
 const L2CAP_MTU: usize = 251;
 const L2CAP_TXQ: u8 = 3;
 const L2CAP_RXQ: u8 = 3;
+const PMW3610_FORCE_AWAKE: bool = true;
+const PMW3610_POLL_INTERVAL_US: u64 = 250;
+const PMW3610_REPORT_HZ: u16 = 800;
+const CLEAR_STORAGE_ON_BOOT: bool = cfg!(feature = "reset-storage");
+const POINTING_INVERT_X: bool = cfg!(feature = "sensor-rotated-180");
+const POINTING_INVERT_Y: bool = !cfg!(feature = "sensor-rotated-180");
 
 #[embassy_executor::task]
 async fn mpsl_task(mpsl: &'static MultiprotocolServiceLayer<'static>) -> ! {
@@ -140,26 +146,27 @@ async fn main(spawner: Spawner) {
     // Internal flash (MPSL-aware)
     let flash = Flash::take(mpsl, p.NVMC);
 
-    // --- Shared SPI bus (595 + PMW3610) ---
-    // SCK = P0_05 (D5), SDIO = P0_04 (D4)
-    let sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
-    let sdio = NrfFlex(Flex::new(p.P0_04));
-    let spi = BitBangSpiBus::new(sck, sdio);
-    static SPI_BUS: StaticCell<RefCell<BitBangSpiBus<Output<'static>, NrfFlex<'static>>>> =
-        StaticCell::new();
-    let spi_bus = SPI_BUS.init(RefCell::new(spi));
-
-    // --- 74HC595 shift register matrix ---
-    // CS/Latch = P1_11 (D6), Rows = P0_28 (D2), P0_29 (D3)
-    let sr_cs = Output::new(p.P1_11, Level::High, OutputDrive::Standard);
+    // --- 74HC595 matrix ---
     let row_pins = [
         Input::new(p.P0_28, Pull::Down),
         Input::new(p.P0_29, Pull::Down),
     ];
-    let debouncer = DefaultDebouncer::new();
-    let spi_for_sr = SharedSpiBus::new(spi_bus);
-    let mut matrix =
-        ShiftRegisterMatrix::<_, _, _, _, ROW, COL>::new(spi_for_sr, sr_cs, row_pins, debouncer);
+    let debouncer = FastDebouncer::new();
+    let matrix_sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
+    let matrix_sdio = NrfFlex(Flex::new(p.P0_04));
+    let shared_bus = {
+        static SPI_BUS: StaticCell<RefCell<BitBangSpiBus<Output<'static>, NrfFlex<'static>>>> =
+            StaticCell::new();
+        SPI_BUS.init(RefCell::new(BitBangSpiBus::new(matrix_sck, matrix_sdio)))
+    };
+    let matrix_spi = SharedSpiBus::new(shared_bus);
+    let matrix_cs = Output::new(p.P1_11, Level::High, OutputDrive::Standard);
+    let mut matrix = ShiftRegisterMatrix::<_, _, _, _, ROW, COL>::new(
+        matrix_spi,
+        matrix_cs,
+        row_pins,
+        debouncer,
+    );
     matrix.init().await;
 
     // --- Rotary encoders ---
@@ -180,22 +187,29 @@ async fn main(spawner: Spawner) {
     );
 
     // --- PMW3610 trackball ---
-    // CS = P0_10 (NFC2)
-    let tb_cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
+    let spi = SharedSpiBus::new(shared_bus);
+    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
     let mot: Option<Input<'static>> = None;
     let sensor_config = Pmw3610Config {
-        res_cpi: 1200,
+        res_cpi: 800,
+        force_awake: PMW3610_FORCE_AWAKE,
         ..Default::default()
     };
-    let spi_for_tb = SharedSpiBus::new(spi_bus);
-    let mut pointing_device =
-        PointingDevice::<Pmw3610<_, _, _>>::new(0, spi_for_tb, tb_cs, mot, sensor_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::with_poll_interval_and_report_hz(
+        0,
+        spi,
+        cs,
+        mot,
+        sensor_config,
+        PMW3610_POLL_INTERVAL_US,
+        PMW3610_REPORT_HZ,
+    );
 
     // --- RMK config ---
     let storage_config = StorageConfig {
         start_addr: 0xA0000,
         num_sectors: 6,
-        clear_storage: cfg!(feature = "reset"),
+        clear_storage: CLEAR_STORAGE_ON_BOOT,
         ..Default::default()
     };
     let ble_battery_config = BleBatteryConfig::default();
@@ -229,11 +243,25 @@ async fn main(spawner: Spawner) {
     .await;
 
     let mut keyboard = Keyboard::new(&keymap);
-    let mut pointing_processor =
-        PointingProcessor::new(&keymap, PointingProcessorConfig::default());
+    let mut pointing_processor = PointingProcessor::new(
+        &keymap,
+        PointingProcessorConfig {
+            invert_x: POINTING_INVERT_X,
+            invert_y: POINTING_INVERT_Y,
+            swap_xy: true,
+            ..Default::default()
+        },
+    );
 
     join3(
-        run_all!(matrix, enc_head, enc_chest, enc_leg, pointing_device, pointing_processor),
+        run_all!(
+            matrix,
+            enc_head,
+            enc_chest,
+            enc_leg,
+            pointing_device,
+            pointing_processor
+        ),
         keyboard.run(),
         run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
     )

@@ -22,9 +22,9 @@ fn copy_linker_script() {
 
 fn generate_vial_config() {
     println!("cargo:rerun-if-changed=vial.json");
+    println!("cargo:rerun-if-changed=vial-rotated.json");
 
-    let content = fs::read_to_string("vial.json").expect("Cannot read vial.json");
-    let vial_cfg = json::stringify(json::parse(&content).unwrap());
+    let vial_cfg = load_vial_config();
 
     let mut keyboard_def_compressed = Vec::new();
     XzEncoder::new(vial_cfg.as_bytes(), 6)
@@ -41,4 +41,19 @@ fn generate_vial_config() {
 
     let out_file = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("config_generated.rs");
     fs::write(out_file, const_declarations).unwrap();
+}
+
+fn load_vial_config() -> String {
+    let content = fs::read_to_string("vial.json").expect("Cannot read vial.json");
+    let mut vial_cfg = json::parse(&content).expect("Invalid vial.json");
+
+    if env::var_os("CARGO_FEATURE_SENSOR_ROTATED_180").is_some() {
+        let layout_content = fs::read_to_string("vial-rotated.json")
+            .expect("Cannot read rotated layout json");
+        let layout = json::parse(&layout_content).expect("Invalid rotated layout json");
+        let keymap = layout.members().skip(1).cloned().collect::<Vec<_>>();
+        vial_cfg["layouts"]["keymap"] = json::JsonValue::Array(keymap);
+    }
+
+    json::stringify(vial_cfg)
 }

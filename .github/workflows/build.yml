@@ -35,24 +35,14 @@ jobs:
       - name: Install cargo-binutils
         run: cargo install cargo-binutils
 
-      - name: Build firmware
-        run: cargo build --release
-
-      - name: Build reset firmware
-        run: cargo build --release --features reset
-
-      - name: Convert to Intel HEX
-        run: |
-          cargo objcopy --release -- -O ihex rmk-cannonball-ll.hex
-          cargo objcopy --release --features reset -- -O ihex rmk-cannonball-ll-reset.hex
+      - name: Install cargo-make
+        run: cargo install cargo-make
 
       - name: Install cargo-hex-to-uf2
         run: cargo install cargo-hex-to-uf2
 
-      - name: Convert to UF2
-        run: |
-          cargo hex-to-uf2 --input-path rmk-cannonball-ll.hex --output-path rmk-cannonball-ll.uf2 --family nrf52840
-          cargo hex-to-uf2 --input-path rmk-cannonball-ll-reset.hex --output-path rmk-cannonball-ll-reset.uf2 --family nrf52840
+      - name: Build firmware variants
+        run: cargo make uf2
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
@@ -61,5 +51,7 @@ jobs:
           path: |
             rmk-cannonball-ll.hex
             rmk-cannonball-ll.uf2
-            rmk-cannonball-ll-reset.hex
-            rmk-cannonball-ll-reset.uf2
+            rmk-cannonball-ll-reset-storage.hex
+            rmk-cannonball-ll-reset-storage.uf2
+            rmk-cannonball-ll-sensor-rotated-180.hex
+            rmk-cannonball-ll-sensor-rotated-180.uf2
