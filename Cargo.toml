@@ -10,7 +10,7 @@ reset-storage = []
 sensor-rotated-180 = []
 
 [dependencies]
-rmk = { git = "https://github.com/Taro-Hayashi/rmk", rev = "ffd847a58e9f01ae37cd52a70b6d0beb8b8a0659", features = [
+rmk = { git = "https://github.com/Taro-Hayashi/rmk", branch = "feat/74hc595-matrix", features = [
     "async_matrix",
     "nrf52840_ble",
 ] }
