@@ -254,6 +254,7 @@ async fn main(spawner: Spawner) {
         &keymap,
         PointingProcessorConfig {
             scroll_layer: Some(SCROLL_LAYER),
+            scroll_divisor: 4,
             ..Default::default()
         },
     );
