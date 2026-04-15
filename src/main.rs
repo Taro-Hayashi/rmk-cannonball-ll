@@ -16,7 +16,7 @@ use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{bind_interrupts, pac, rng, usb};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
-use keymap::{COL, ROW};
+use keymap::{COL, ROW, SCROLL_LAYER};
 use nrf_flex::NrfFlex;
 use nrf_mpsl::Flash;
 use nrf_sdc::mpsl::MultiprotocolServiceLayer;
@@ -252,7 +252,10 @@ async fn main(spawner: Spawner) {
     let mut keyboard = Keyboard::new(&keymap);
     let mut pointing_processor = PointingProcessor::new(
         &keymap,
-        PointingProcessorConfig::default(),
+        PointingProcessorConfig {
+            scroll_layer: Some(SCROLL_LAYER),
+            ..Default::default()
+        },
     );
 
     join3(

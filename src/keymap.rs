@@ -1,10 +1,11 @@
 use rmk::types::action::{EncoderAction, KeyAction};
-use rmk::{encoder, k, layer};
+use rmk::{a, encoder, k, layer};
 
 pub(crate) const COL: usize = 15;
 pub(crate) const ROW: usize = 2;
-pub(crate) const NUM_LAYER: usize = 1;
+pub(crate) const NUM_LAYER: usize = 2;
 pub(crate) const NUM_ENCODER: usize = 3;
+pub(crate) const SCROLL_LAYER: u8 = 1;
 
 #[rustfmt::skip]
 pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
@@ -23,6 +24,20 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
                     k!(D), k!(F), k!(S), k!(Q),
                     k!(R), k!(T), k!(V), k!(U),
                     k!(Kc0), k!(Kc9), k!(Kc8)
+                ]
+            ]),
+            layer!([
+                [
+                    a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                    a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                    a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                    a!(Transparent), a!(Transparent), a!(Transparent)
+                ],
+                [
+                    a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                    a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                    a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                    a!(Transparent), a!(Transparent), a!(Transparent)
                 ]
             ]),
         ];
@@ -45,14 +60,35 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
                 k!(Kc0), k!(Kc9), k!(Kc8)
             ]
         ]),
+        layer!([
+            [
+                a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                a!(Transparent), a!(Transparent), a!(Transparent)
+            ],
+            [
+                a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
+                a!(Transparent), a!(Transparent), a!(Transparent)
+            ]
+        ]),
     ]
     }
 }
 
 pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAYER] {
-    [[
-        encoder!(k!(Kc1), k!(Kc2)),
-        encoder!(k!(MouseWheelUp), k!(MouseWheelDown)),
-        encoder!(k!(Kc3), k!(Kc4)),
-    ]]
+    [
+        [
+            encoder!(k!(Kc1), k!(Kc2)),
+            encoder!(k!(MouseWheelUp), k!(MouseWheelDown)),
+            encoder!(k!(Kc3), k!(Kc4)),
+        ],
+        [
+            encoder!(a!(Transparent), a!(Transparent)),
+            encoder!(a!(Transparent), a!(Transparent)),
+            encoder!(a!(Transparent), a!(Transparent)),
+        ],
+    ]
 }
