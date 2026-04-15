@@ -1,20 +1,21 @@
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
-
 mod keymap;
 mod nrf_flex;
 mod vial;
 
 use defmt::unwrap;
 use defmt_rtt as _;
+use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::Spawner;
 use embassy_nrf::gpio::{Flex, Input, Level, Output, OutputDrive, Pull};
 use embassy_nrf::peripherals::{RNG, USBD};
 use embassy_nrf::usb::Driver;
 use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{bind_interrupts, pac, rng, usb};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
 use keymap::{COL, ROW};
 use nrf_flex::NrfFlex;
 use nrf_mpsl::Flash;
@@ -30,14 +31,13 @@ use rmk::config::{
 };
 use rmk::debounce::fast_debouncer::FastDebouncer;
 use rmk::driver::bitbang_spi::BitBangSpiBus;
-use rmk::driver::shared_spi::SharedSpiBus;
 use rmk::futures::future::join3;
 use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
 use rmk::input_device::pointing::{PointingDevice, PointingProcessor, PointingProcessorConfig};
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
-use rmk::shift_register::ShiftRegisterMatrix;
+use rmk::matrix::hc595_matrix::Hc595Matrix;
 use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
@@ -57,12 +57,23 @@ const UNLOCK_KEYS: &[(u8, u8)] = &[(0, 0), (0, 1)];
 const L2CAP_MTU: usize = 251;
 const L2CAP_TXQ: u8 = 3;
 const L2CAP_RXQ: u8 = 3;
-const PMW3610_FORCE_AWAKE: bool = true;
-const PMW3610_POLL_INTERVAL_US: u64 = 250;
-const PMW3610_REPORT_HZ: u16 = 800;
 const CLEAR_STORAGE_ON_BOOT: bool = cfg!(feature = "reset-storage");
-const POINTING_INVERT_X: bool = cfg!(feature = "sensor-rotated-180");
-const POINTING_INVERT_Y: bool = !cfg!(feature = "sensor-rotated-180");
+
+struct DummyCs;
+
+impl embedded_hal::digital::ErrorType for DummyCs {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_hal::digital::OutputPin for DummyCs {
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
 
 #[embassy_executor::task]
 async fn mpsl_task(mpsl: &'static MultiprotocolServiceLayer<'static>) -> ! {
@@ -104,9 +115,8 @@ async fn main(spawner: Spawner) {
     let p = embassy_nrf::init(nrf_config);
 
     // --- MPSL (Multiprotocol Service Layer) ---
-    let mpsl_p = mpsl::Peripherals::new(
-        p.RTC0, p.TIMER0, p.TEMP, p.PPI_CH19, p.PPI_CH30, p.PPI_CH31,
-    );
+    let mpsl_p =
+        mpsl::Peripherals::new(p.RTC0, p.TIMER0, p.TEMP, p.PPI_CH19, p.PPI_CH30, p.PPI_CH31);
     let lfclk_cfg = mpsl::raw::mpsl_clock_lfclk_cfg_t {
         source: mpsl::raw::MPSL_CLOCK_LF_SRC_RC as u8,
         rc_ctiv: mpsl::raw::MPSL_RECOMMENDED_RC_CTIV as u8,
@@ -126,8 +136,8 @@ async fn main(spawner: Spawner) {
 
     // --- SDC (SoftDevice Controller) ---
     let sdc_p = sdc::Peripherals::new(
-        p.PPI_CH17, p.PPI_CH18, p.PPI_CH20, p.PPI_CH21, p.PPI_CH22, p.PPI_CH23,
-        p.PPI_CH24, p.PPI_CH25, p.PPI_CH26, p.PPI_CH27, p.PPI_CH28, p.PPI_CH29,
+        p.PPI_CH17, p.PPI_CH18, p.PPI_CH20, p.PPI_CH21, p.PPI_CH22, p.PPI_CH23, p.PPI_CH24,
+        p.PPI_CH25, p.PPI_CH26, p.PPI_CH27, p.PPI_CH28, p.PPI_CH29,
     );
     static RNG_INST: StaticCell<rng::Rng<'static, embassy_nrf::mode::Async>> = StaticCell::new();
     let rng_inst = RNG_INST.init(rng::Rng::new(p.RNG, Irqs));
@@ -155,24 +165,33 @@ async fn main(spawner: Spawner) {
     let matrix_sck = Output::new(p.P0_05, Level::High, OutputDrive::Standard);
     let matrix_sdio = NrfFlex(Flex::new(p.P0_04));
     let shared_bus = {
-        static SPI_BUS: StaticCell<RefCell<BitBangSpiBus<Output<'static>, NrfFlex<'static>>>> =
-            StaticCell::new();
-        SPI_BUS.init(RefCell::new(BitBangSpiBus::new(matrix_sck, matrix_sdio)))
+        static SPI_BUS: StaticCell<
+            Mutex<ThreadModeRawMutex, BitBangSpiBus<Output<'static>, NrfFlex<'static>>>,
+        > = StaticCell::new();
+        SPI_BUS.init(Mutex::new(BitBangSpiBus::new(matrix_sck, matrix_sdio)))
     };
-    let matrix_spi = SharedSpiBus::new(shared_bus);
+    let matrix_spi = SpiDevice::new(shared_bus, DummyCs);
     let matrix_cs = Output::new(p.P1_11, Level::High, OutputDrive::Standard);
-    let mut matrix = ShiftRegisterMatrix::<_, _, _, _, ROW, COL>::new(
-        matrix_spi,
-        matrix_cs,
-        row_pins,
-        debouncer,
-    );
-    matrix.init().await;
+    let mut matrix = Hc595Matrix::<_, _, _, _, ROW, COL>::new(matrix_spi, matrix_cs, row_pins, debouncer).await;
+
+    // --- PMW3610 trackball (shares the matrix SPI bus) ---
+    let pmw_cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
+    let pmw_spi = SpiDevice::new(shared_bus, pmw_cs);
+    let pmw_motion = Input::new(p.P0_09, Pull::Up);
+    let pmw_config = Pmw3610Config {
+        res_cpi: 1200,
+        swap_xy: true,
+        invert_x: !cfg!(feature = "sensor-rotated-180"),
+        invert_y: cfg!(feature = "sensor-rotated-180"),
+        ..Default::default()
+    };
+    let mut pointing_device =
+        PointingDevice::<Pmw3610<_, _>>::new(0, pmw_spi, Some(pmw_motion), pmw_config);
 
     // --- Rotary encoders ---
     let mut enc_head = RotaryEncoder::new(
-        Input::new(p.P0_02, Pull::Up),
         Input::new(p.P0_03, Pull::Up),
+        Input::new(p.P0_02, Pull::Up),
         0,
     );
     let mut enc_chest = RotaryEncoder::new(
@@ -180,29 +199,17 @@ async fn main(spawner: Spawner) {
         Input::new(p.P1_14, Pull::Up),
         1,
     );
+    #[cfg(not(feature = "sensor-rotated-180"))]
     let mut enc_leg = RotaryEncoder::new(
         Input::new(p.P1_13, Pull::Up),
         Input::new(p.P1_12, Pull::Up),
         2,
     );
-
-    // --- PMW3610 trackball ---
-    let spi = SharedSpiBus::new(shared_bus);
-    let cs = Output::new(p.P0_10, Level::High, OutputDrive::Standard);
-    let mot: Option<Input<'static>> = None;
-    let sensor_config = Pmw3610Config {
-        res_cpi: 800,
-        force_awake: PMW3610_FORCE_AWAKE,
-        ..Default::default()
-    };
-    let mut pointing_device = PointingDevice::<Pmw3610<_, _, _>>::with_poll_interval_and_report_hz(
-        0,
-        spi,
-        cs,
-        mot,
-        sensor_config,
-        PMW3610_POLL_INTERVAL_US,
-        PMW3610_REPORT_HZ,
+    #[cfg(feature = "sensor-rotated-180")]
+    let mut enc_leg = RotaryEncoder::new(
+        Input::new(p.P1_12, Pull::Up),
+        Input::new(p.P1_13, Pull::Up),
+        2,
     );
 
     // --- RMK config ---
@@ -245,23 +252,11 @@ async fn main(spawner: Spawner) {
     let mut keyboard = Keyboard::new(&keymap);
     let mut pointing_processor = PointingProcessor::new(
         &keymap,
-        PointingProcessorConfig {
-            invert_x: POINTING_INVERT_X,
-            invert_y: POINTING_INVERT_Y,
-            swap_xy: true,
-            ..Default::default()
-        },
+        PointingProcessorConfig::default(),
     );
 
     join3(
-        run_all!(
-            matrix,
-            enc_head,
-            enc_chest,
-            enc_leg,
-            pointing_device,
-            pointing_processor
-        ),
+        run_all!(matrix, enc_head, enc_chest, enc_leg, pointing_device, pointing_processor),
         keyboard.run(),
         run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
     )

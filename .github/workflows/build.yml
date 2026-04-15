@@ -40,17 +40,15 @@ jobs:
 
       - name: Build firmware variants
         run: |
-          cargo build --release
-          cargo build --release --features reset-storage
-          cargo build --release --features sensor-rotated-180
-
           cargo objcopy --release -- -O ihex rmk-cannonball-ll.hex
           cargo objcopy --release --features reset-storage -- -O ihex rmk-cannonball-ll-reset-storage.hex
           cargo objcopy --release --features sensor-rotated-180 -- -O ihex rmk-cannonball-ll-sensor-rotated-180.hex
+          cargo objcopy --release --features sensor-rotated-180,reset-storage -- -O ihex rmk-cannonball-ll-sensor-rotated-180-reset-storage.hex
 
           cargo hex-to-uf2 --input-path rmk-cannonball-ll.hex --output-path rmk-cannonball-ll.uf2 --family nrf52840
           cargo hex-to-uf2 --input-path rmk-cannonball-ll-reset-storage.hex --output-path rmk-cannonball-ll-reset-storage.uf2 --family nrf52840
           cargo hex-to-uf2 --input-path rmk-cannonball-ll-sensor-rotated-180.hex --output-path rmk-cannonball-ll-sensor-rotated-180.uf2 --family nrf52840
+          cargo hex-to-uf2 --input-path rmk-cannonball-ll-sensor-rotated-180-reset-storage.hex --output-path rmk-cannonball-ll-sensor-rotated-180-reset-storage.uf2 --family nrf52840
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
@@ -63,3 +61,5 @@ jobs:
             rmk-cannonball-ll-reset-storage.uf2
             rmk-cannonball-ll-sensor-rotated-180.hex
             rmk-cannonball-ll-sensor-rotated-180.uf2
+            rmk-cannonball-ll-sensor-rotated-180-reset-storage.hex
+            rmk-cannonball-ll-sensor-rotated-180-reset-storage.uf2

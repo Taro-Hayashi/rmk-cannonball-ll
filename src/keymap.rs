@@ -50,25 +50,9 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
 }
 
 pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAYER] {
-    #[cfg(feature = "sensor-rotated-180")]
-    {
-        return [
-            [
-                encoder!(k!(Kc3), k!(Kc4)),
-                encoder!(k!(Kc1), k!(Kc2)),
-                encoder!(k!(MouseWheelUp), k!(MouseWheelDown)),
-            ],
-        ];
-    }
-
-    #[cfg(not(feature = "sensor-rotated-180"))]
-    {
-    [
-        [
-            encoder!(k!(Kc1), k!(Kc2)),
-            encoder!(k!(MouseWheelUp), k!(MouseWheelDown)),
-            encoder!(k!(Kc3), k!(Kc4)),
-        ],
-    ]
-    }
+    [[
+        encoder!(k!(Kc1), k!(Kc2)),
+        encoder!(k!(MouseWheelUp), k!(MouseWheelDown)),
+        encoder!(k!(Kc3), k!(Kc4)),
+    ]]
 }
