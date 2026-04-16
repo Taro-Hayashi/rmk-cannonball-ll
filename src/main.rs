@@ -214,8 +214,13 @@ async fn main(spawner: Spawner) {
         invert_y: cfg!(feature = "sensor-rotated-180"),
         ..Default::default()
     };
-    let mut pointing_device =
-        PointingDevice::<Pmw3610<_, _>>::new(0, pmw_spi, Some(pmw_motion), pmw_config);
+    let mut pointing_device = PointingDevice::<Pmw3610<_, _>>::with_report_hz(
+        0,
+        pmw_spi,
+        Some(pmw_motion),
+        pmw_config,
+        1000,
+    );
 
     // --- Rotary encoders ---
     let mut enc_head = RotaryEncoder::new(
