@@ -1,4 +1,4 @@
-name: Build RMK firmware
+name: Build reset-bootloader firmware
 
 on:
   workflow_dispatch:
@@ -25,9 +25,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-reset-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-reset-
 
       - name: Install flip-link
         run: cargo install flip-link
@@ -38,28 +38,15 @@ jobs:
       - name: Install cargo-hex-to-uf2
         run: cargo install cargo-hex-to-uf2
 
-      - name: Build firmware variants
+      - name: Build reset-bootloader firmware
         run: |
-          cargo objcopy --release -- -O ihex rmk-cannonball-ll.hex
-          cargo objcopy --release --features reset-storage -- -O ihex rmk-cannonball-ll-reset-storage.hex
-          cargo objcopy --release --features sensor-rotated-180 -- -O ihex rmk-cannonball-ll-sensor-rotated-180.hex
-          cargo objcopy --release --features sensor-rotated-180,reset-storage -- -O ihex rmk-cannonball-ll-sensor-rotated-180-reset-storage.hex
+          cargo objcopy --release -- -O ihex rmk-cannonball-ll-reset-bootloader.hex
+          cargo hex-to-uf2 --input-path rmk-cannonball-ll-reset-bootloader.hex --output-path rmk-cannonball-ll-reset-bootloader.uf2 --family nrf52840
 
-          cargo hex-to-uf2 --input-path rmk-cannonball-ll.hex --output-path rmk-cannonball-ll.uf2 --family nrf52840
-          cargo hex-to-uf2 --input-path rmk-cannonball-ll-reset-storage.hex --output-path rmk-cannonball-ll-reset-storage.uf2 --family nrf52840
-          cargo hex-to-uf2 --input-path rmk-cannonball-ll-sensor-rotated-180.hex --output-path rmk-cannonball-ll-sensor-rotated-180.uf2 --family nrf52840
-          cargo hex-to-uf2 --input-path rmk-cannonball-ll-sensor-rotated-180-reset-storage.hex --output-path rmk-cannonball-ll-sensor-rotated-180-reset-storage.uf2 --family nrf52840
-
-      - name: Upload firmware artifacts
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rmk-cannonball-ll-firmware
+          name: rmk-cannonball-ll-reset-bootloader
           path: |
-            rmk-cannonball-ll.hex
-            rmk-cannonball-ll.uf2
-            rmk-cannonball-ll-reset-storage.hex
-            rmk-cannonball-ll-reset-storage.uf2
-            rmk-cannonball-ll-sensor-rotated-180.hex
-            rmk-cannonball-ll-sensor-rotated-180.uf2
-            rmk-cannonball-ll-sensor-rotated-180-reset-storage.hex
-            rmk-cannonball-ll-sensor-rotated-180-reset-storage.uf2
+            rmk-cannonball-ll-reset-bootloader.hex
+            rmk-cannonball-ll-reset-bootloader.uf2
