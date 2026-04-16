@@ -3,6 +3,7 @@
 
 mod keymap;
 mod nrf_flex;
+mod pointing_slots;
 mod vial;
 
 use defmt::unwrap;
@@ -16,31 +17,59 @@ use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{bind_interrupts, pac, rng, usb};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
-use keymap::{COL, ROW, SCROLL_LAYER};
+use keymap::{
+    COL, ROW, SCROLL_LAYER, USER_CPI_DOWN, USER_CPI_UP, USER_CURSOR_TOGGLE, USER_LOAD_SLOT_1,
+    USER_LOAD_SLOT_2, USER_SAVE_SLOT_1, USER_SAVE_SLOT_2, USER_SCROLL_INVERT_X,
+    USER_SCROLL_INVERT_Y, USER_SCROLL_SPEED_DOWN, USER_SCROLL_SPEED_UP, USER_SNIPE,
+};
 use nrf_flex::NrfFlex;
 use nrf_mpsl::Flash;
+#[cfg(feature = "reset-storage")]
+use pointing_slots::{SLOT_1_ADDR, SLOT_2_ADDR};
+use pointing_slots::{
+    PointingSettingsSnapshot, SharedFlash, SharedFlashMutex, load_slot, save_slot,
+};
 use nrf_sdc::mpsl::MultiprotocolServiceLayer;
 use nrf_sdc::{self as sdc, mpsl};
 use panic_probe as _;
 use rand_chacha::ChaCha12Rng;
 use rand_core::SeedableRng;
 use rmk::ble::build_ble_stack;
+use rmk::channel::USER_KEY_EVENT_CHANNEL;
 use rmk::config::{
     BehaviorConfig, BleBatteryConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig,
     VialConfig,
 };
 use rmk::debounce::fast_debouncer::FastDebouncer;
 use rmk::driver::bitbang_spi::BitBangSpiBus;
-use rmk::futures::future::join3;
+use rmk::event::{PointingSetCpiEvent, publish_event};
+use rmk::futures::future::join4;
 use rmk::input_device::Runnable;
 use rmk::input_device::pmw3610::{Pmw3610, Pmw3610Config};
-use rmk::input_device::pointing::{PointingDevice, PointingProcessor, PointingProcessorConfig};
+use rmk::input_device::pointing::{
+    PointingDevice, PointingProcessor, PointingProcessorConfig, PointingRuntimeState,
+    PointingRuntimeStateCell,
+};
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::matrix::hc595_matrix::Hc595Matrix;
 use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all, run_rmk};
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
+
+// --- Pointing tunables (7-step tables, center = firmware default) ---
+const CPI_STEPS: [u16; 7] = [400, 600, 900, 1200, 1600, 2100, 2800];
+const SCROLL_DIVISOR_STEPS: [u8; 7] = [8, 12, 18, 24, 36, 54, 72];
+const DEFAULT_CPI_STEP: u8 = 3;
+const DEFAULT_SCROLL_STEP: u8 = 3;
+const PMW_DEVICE_ID: u8 = 0;
+
+static POINTING_RUNTIME: PointingRuntimeStateCell = PointingRuntimeStateCell::new(PointingRuntimeState {
+    cursor_enabled: true,
+    scroll_divisor: SCROLL_DIVISOR_STEPS[DEFAULT_SCROLL_STEP as usize],
+    scroll_invert_wheel: false,
+    scroll_invert_pan: false,
+});
 
 bind_interrupts!(struct Irqs {
     USBD => usb::InterruptHandler<USBD>;
@@ -153,8 +182,11 @@ async fn main(spawner: Spawner) {
     // USB driver
     let driver = Driver::new(p.USBD, Irqs, HardwareVbusDetect::new(Irqs));
 
-    // Internal flash (MPSL-aware)
-    let flash = Flash::take(mpsl, p.NVMC);
+    // Internal flash (MPSL-aware) shared between rmk storage and slot I/O.
+    static FLASH_MUTEX: StaticCell<SharedFlashMutex> = StaticCell::new();
+    let flash_mutex: &'static SharedFlashMutex =
+        FLASH_MUTEX.init(Mutex::new(Flash::take(mpsl, p.NVMC)));
+    let flash = SharedFlash::new(flash_mutex);
 
     // --- 74HC595 matrix ---
     let row_pins = [
@@ -254,15 +286,205 @@ async fn main(spawner: Spawner) {
         &keymap,
         PointingProcessorConfig {
             scroll_layer: Some(SCROLL_LAYER),
-            scroll_divisor: 4,
             ..Default::default()
         },
-    );
+    )
+    .with_runtime_state(&POINTING_RUNTIME);
 
-    join3(
+    // Publish the initial CPI so PMW3610 matches the firmware default step.
+    publish_event(PointingSetCpiEvent {
+        device_id: PMW_DEVICE_ID,
+        cpi: CPI_STEPS[DEFAULT_CPI_STEP as usize],
+    });
+
+    join4(
         run_all!(matrix, enc_head, enc_chest, enc_leg, pointing_device, pointing_processor),
         keyboard.run(),
         run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
+        pointing_user_key_dispatcher(flash_mutex),
     )
     .await;
+}
+
+fn set_cpi(step: u8) {
+    let cpi = CPI_STEPS[step as usize];
+    publish_event(PointingSetCpiEvent { device_id: PMW_DEVICE_ID, cpi });
+    defmt::info!("CPI step {} ({} cpi)", step, cpi);
+}
+
+fn apply_snapshot(snapshot: PointingSettingsSnapshot) -> Option<(u8, u8)> {
+    if snapshot.cpi_step as usize >= CPI_STEPS.len()
+        || snapshot.scroll_step as usize >= SCROLL_DIVISOR_STEPS.len()
+    {
+        return None;
+    }
+    let divisor = SCROLL_DIVISOR_STEPS[snapshot.scroll_step as usize];
+    POINTING_RUNTIME.update(|s| {
+        s.cursor_enabled = snapshot.cursor_enabled;
+        s.scroll_divisor = divisor;
+        s.scroll_invert_wheel = snapshot.scroll_invert_wheel;
+        s.scroll_invert_pan = snapshot.scroll_invert_pan;
+    });
+    set_cpi(snapshot.cpi_step);
+    Some((snapshot.cpi_step, snapshot.scroll_step))
+}
+
+/// Listens on USER_KEY_EVENT_CHANNEL and mutates pointing runtime state
+/// + republishes PMW3610 CPI changes. Snipe saves the active CPI step on
+/// press and restores it on release. On startup, loads Slot 1 if present.
+async fn pointing_user_key_dispatcher(flash_mutex: &'static SharedFlashMutex) {
+    let mut cpi_step: u8 = DEFAULT_CPI_STEP;
+    let mut scroll_step: u8 = DEFAULT_SCROLL_STEP;
+    let mut snipe_saved_step: Option<u8> = None;
+
+    #[cfg(feature = "reset-storage")]
+    {
+        use embedded_storage_async::nor_flash::NorFlash;
+        let mut guard = flash_mutex.lock().await;
+        let _ = NorFlash::erase(&mut *guard, SLOT_1_ADDR, SLOT_1_ADDR + 0x1000).await;
+        let _ = NorFlash::erase(&mut *guard, SLOT_2_ADDR, SLOT_2_ADDR + 0x1000).await;
+        defmt::info!("reset-storage: cleared pointing slots");
+    }
+
+    // Wait for PointingDevice to subscribe to PointingSetCpiEvent before
+    // publishing — publish_immediate drops messages when no subscriber exists.
+    embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+
+    // Auto-load Slot 1 on boot; fall back to defaults if absent/invalid.
+    let loaded = match load_slot(flash_mutex, 1).await {
+        Some(snapshot) => match apply_snapshot(snapshot) {
+            Some((c, s)) => {
+                cpi_step = c;
+                scroll_step = s;
+                defmt::info!("Loaded pointing Slot 1 on boot");
+                true
+            }
+            None => {
+                defmt::warn!("Slot 1 blob rejected (out-of-range step)");
+                false
+            }
+        },
+        None => false,
+    };
+    if !loaded {
+        set_cpi(cpi_step);
+    }
+
+    loop {
+        let evt = USER_KEY_EVENT_CHANNEL.receive().await;
+        match (evt.id, evt.pressed) {
+            (USER_CPI_UP, true) => {
+                if cpi_step + 1 < CPI_STEPS.len() as u8 {
+                    cpi_step += 1;
+                    set_cpi(cpi_step);
+                }
+            }
+            (USER_CPI_DOWN, true) => {
+                if cpi_step > 0 {
+                    cpi_step -= 1;
+                    set_cpi(cpi_step);
+                }
+            }
+            (USER_CURSOR_TOGGLE, true) => {
+                POINTING_RUNTIME.update(|s| s.cursor_enabled = !s.cursor_enabled);
+                let enabled = POINTING_RUNTIME.get().cursor_enabled;
+                defmt::info!("Cursor enabled: {}", enabled);
+            }
+            (USER_SNIPE, true) => {
+                if snipe_saved_step.is_none() {
+                    snipe_saved_step = Some(cpi_step);
+                    cpi_step = 0;
+                    set_cpi(cpi_step);
+                }
+            }
+            (USER_SNIPE, false) => {
+                if let Some(saved) = snipe_saved_step.take() {
+                    cpi_step = saved;
+                    set_cpi(cpi_step);
+                }
+            }
+            (USER_SCROLL_SPEED_UP, true) => {
+                if scroll_step > 0 {
+                    scroll_step -= 1;
+                    let divisor = SCROLL_DIVISOR_STEPS[scroll_step as usize];
+                    POINTING_RUNTIME.update(|s| s.scroll_divisor = divisor);
+                    defmt::info!("Scroll step {} (divisor {})", scroll_step, divisor);
+                }
+            }
+            (USER_SCROLL_SPEED_DOWN, true) => {
+                if scroll_step + 1 < SCROLL_DIVISOR_STEPS.len() as u8 {
+                    scroll_step += 1;
+                    let divisor = SCROLL_DIVISOR_STEPS[scroll_step as usize];
+                    POINTING_RUNTIME.update(|s| s.scroll_divisor = divisor);
+                    defmt::info!("Scroll step {} (divisor {})", scroll_step, divisor);
+                }
+            }
+            (USER_SCROLL_INVERT_X, true) => {
+                POINTING_RUNTIME.update(|s| s.scroll_invert_pan = !s.scroll_invert_pan);
+                defmt::info!("Scroll invert X: {}", POINTING_RUNTIME.get().scroll_invert_pan);
+            }
+            (USER_SCROLL_INVERT_Y, true) => {
+                POINTING_RUNTIME.update(|s| s.scroll_invert_wheel = !s.scroll_invert_wheel);
+                defmt::info!("Scroll invert Y: {}", POINTING_RUNTIME.get().scroll_invert_wheel);
+            }
+            (USER_SAVE_SLOT_1, true) => {
+                save_current(flash_mutex, 1, cpi_step, scroll_step).await;
+            }
+            (USER_LOAD_SLOT_1, true) => {
+                if let Some((c, s)) = load_and_apply(flash_mutex, 1).await {
+                    cpi_step = c;
+                    scroll_step = s;
+                }
+            }
+            (USER_SAVE_SLOT_2, true) => {
+                save_current(flash_mutex, 2, cpi_step, scroll_step).await;
+            }
+            (USER_LOAD_SLOT_2, true) => {
+                if let Some((c, s)) = load_and_apply(flash_mutex, 2).await {
+                    cpi_step = c;
+                    scroll_step = s;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+async fn save_current(
+    flash_mutex: &'static SharedFlashMutex,
+    slot: u8,
+    cpi_step: u8,
+    scroll_step: u8,
+) {
+    let rt = POINTING_RUNTIME.get();
+    let snapshot = PointingSettingsSnapshot {
+        cpi_step,
+        scroll_step,
+        cursor_enabled: rt.cursor_enabled,
+        scroll_invert_wheel: rt.scroll_invert_wheel,
+        scroll_invert_pan: rt.scroll_invert_pan,
+    };
+    match save_slot(flash_mutex, slot, snapshot).await {
+        Ok(()) => defmt::info!("Saved pointing Slot {}", slot),
+        Err(_) => defmt::error!("Save Slot {} failed", slot),
+    }
+}
+
+async fn load_and_apply(flash_mutex: &'static SharedFlashMutex, slot: u8) -> Option<(u8, u8)> {
+    match load_slot(flash_mutex, slot).await {
+        Some(snapshot) => match apply_snapshot(snapshot) {
+            Some(pair) => {
+                defmt::info!("Loaded pointing Slot {}", slot);
+                Some(pair)
+            }
+            None => {
+                defmt::warn!("Slot {} blob rejected (out-of-range step)", slot);
+                None
+            }
+        },
+        None => {
+            defmt::warn!("Slot {} empty or invalid", slot);
+            None
+        }
+    }
 }

@@ -100,5 +100,27 @@
         "0,3"
       ]
     ]
-  }
+  },
+  "customKeycodes": [
+    { "name": "BLE Profile 0",   "title": "Switch to BLE profile 0",             "shortName": "BLE0"  },
+    { "name": "BLE Profile 1",   "title": "Switch to BLE profile 1",             "shortName": "BLE1"  },
+    { "name": "BLE Profile 2",   "title": "Switch to BLE profile 2",             "shortName": "BLE2"  },
+    { "name": "BLE Next",        "title": "Next BLE profile",                    "shortName": "BLE>"  },
+    { "name": "BLE Prev",        "title": "Previous BLE profile",                "shortName": "BLE<"  },
+    { "name": "BLE Clear",       "title": "Clear current BLE profile",           "shortName": "BLECLR"},
+    { "name": "BLE Toggle",      "title": "Toggle USB / BLE connection",         "shortName": "BLETGL"},
+    { "name": "BLE Clr Peer",    "title": "Hold 5s to clear split peer info",    "shortName": "BLEPEER"},
+    { "name": "CPI Up",          "title": "Increase sensor CPI step",            "shortName": "CPI+"  },
+    { "name": "CPI Down",        "title": "Decrease sensor CPI step",            "shortName": "CPI-"  },
+    { "name": "Cursor Toggle",   "title": "Enable/disable cursor motion",        "shortName": "CSRTG" },
+    { "name": "Snipe",           "title": "Hold to switch to slowest CPI",       "shortName": "SNIPE" },
+    { "name": "Scroll Faster",   "title": "Increase scroll speed (smaller divisor)", "shortName": "SCR+" },
+    { "name": "Scroll Slower",   "title": "Decrease scroll speed (larger divisor)",  "shortName": "SCR-" },
+    { "name": "Scroll Inv X",    "title": "Toggle scroll pan (X) inversion",     "shortName": "SCRIX" },
+    { "name": "Scroll Inv Y",    "title": "Toggle scroll wheel (Y) inversion",   "shortName": "SCRIY" },
+    { "name": "Save Slot 1",     "title": "Save pointing settings to slot 1",    "shortName": "SAV1"  },
+    { "name": "Load Slot 1",     "title": "Load pointing settings from slot 1",  "shortName": "LOD1"  },
+    { "name": "Save Slot 2",     "title": "Save pointing settings to slot 2",    "shortName": "SAV2"  },
+    { "name": "Load Slot 2",     "title": "Load pointing settings from slot 2",  "shortName": "LOD2"  }
+  ]
 }
