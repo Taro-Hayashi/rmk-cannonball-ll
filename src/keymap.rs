@@ -99,8 +99,8 @@ pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAY
         return [
             [
                 encoder!(k!(W), k!(X)),                        // head
-                encoder!(k!(Y), k!(Z)),                        // chest
-                encoder!(k!(MouseWheelUp), k!(MouseWheelDown)), // leg: vertical wheel
+                encoder!(k!(Z), k!(Y)),                        // chest
+                encoder!(k!(MouseWheelDown), k!(MouseWheelUp)), // leg: vertical wheel
             ],
             [
                 encoder!(a!(Transparent), a!(Transparent)),
@@ -115,7 +115,7 @@ pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAY
         [
             [
                 encoder!(k!(W), k!(X)),                        // head
-                encoder!(k!(MouseWheelUp), k!(MouseWheelDown)), // chest: vertical wheel
+                encoder!(k!(MouseWheelDown), k!(MouseWheelUp)), // chest: vertical wheel
                 encoder!(k!(Y), k!(Z)),                        // leg
             ],
             [
