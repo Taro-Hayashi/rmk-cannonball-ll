@@ -40,13 +40,13 @@ jobs:
 
       - name: Build reset-bootloader firmware
         run: |
-          cargo objcopy --release -- -O ihex rmk-cannonball-ll-reset-bootloader.hex
-          cargo hex-to-uf2 --input-path rmk-cannonball-ll-reset-bootloader.hex --output-path rmk-cannonball-ll-reset-bootloader.uf2 --family nrf52840
+          cargo objcopy --release -- -O ihex reset-bootloader.hex
+          cargo hex-to-uf2 --input-path reset-bootloader.hex --output-path reset-bootloader.uf2 --family nrf52840
 
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rmk-cannonball-ll-reset-bootloader
+          name: reset-bootloader
           path: |
-            rmk-cannonball-ll-reset-bootloader.hex
-            rmk-cannonball-ll-reset-bootloader.uf2
+            reset-bootloader.hex
+            reset-bootloader.uf2
