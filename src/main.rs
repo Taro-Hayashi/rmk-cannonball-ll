@@ -24,8 +24,6 @@ use keymap::{
 };
 use nrf_flex::NrfFlex;
 use nrf_mpsl::Flash;
-#[cfg(feature = "reset-storage")]
-use pointing_slots::{SLOT_1_ADDR, SLOT_2_ADDR};
 use pointing_slots::{
     PointingSettingsSnapshot, SharedFlash, SharedFlashMutex, load_slot, save_slot,
 };
@@ -86,7 +84,6 @@ const UNLOCK_KEYS: &[(u8, u8)] = &[(0, 0), (0, 1)];
 const L2CAP_MTU: usize = 251;
 const L2CAP_TXQ: u8 = 3;
 const L2CAP_RXQ: u8 = 3;
-const CLEAR_STORAGE_ON_BOOT: bool = cfg!(feature = "reset-storage");
 
 struct DummyCs;
 
@@ -248,7 +245,7 @@ async fn main(spawner: Spawner) {
     let storage_config = StorageConfig {
         start_addr: 0xA0000,
         num_sectors: 6,
-        clear_storage: CLEAR_STORAGE_ON_BOOT,
+        clear_storage: false,
         ..Default::default()
     };
     let ble_battery_config = BleBatteryConfig::default();
@@ -336,15 +333,6 @@ async fn pointing_user_key_dispatcher(flash_mutex: &'static SharedFlashMutex) {
     let mut cpi_step: u8 = DEFAULT_CPI_STEP;
     let mut scroll_step: u8 = DEFAULT_SCROLL_STEP;
     let mut snipe_saved_step: Option<u8> = None;
-
-    #[cfg(feature = "reset-storage")]
-    {
-        use embedded_storage_async::nor_flash::NorFlash;
-        let mut guard = flash_mutex.lock().await;
-        let _ = NorFlash::erase(&mut *guard, SLOT_1_ADDR, SLOT_1_ADDR + 0x1000).await;
-        let _ = NorFlash::erase(&mut *guard, SLOT_2_ADDR, SLOT_2_ADDR + 0x1000).await;
-        defmt::info!("reset-storage: cleared pointing slots");
-    }
 
     // Wait for PointingDevice to subscribe to PointingSetCpiEvent before
     // publishing — publish_immediate drops messages when no subscriber exists.

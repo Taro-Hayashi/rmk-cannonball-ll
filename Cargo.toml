@@ -6,7 +6,6 @@ description = "Cannonball LL keyboard firmware (RMK)"
 
 [features]
 default = []
-reset-storage = []
 sensor-rotated-180 = []
 
 [dependencies]
