@@ -1,5 +1,5 @@
 use rmk::types::action::{EncoderAction, KeyAction};
-use rmk::{a, encoder, k, layer, user};
+use rmk::{a, encoder, k, layer};
 
 pub(crate) const COL: usize = 15;
 pub(crate) const ROW: usize = 2;
@@ -7,7 +7,8 @@ pub(crate) const NUM_LAYER: usize = 2;
 pub(crate) const NUM_ENCODER: usize = 3;
 pub(crate) const SCROLL_LAYER: u8 = 1;
 
-// USER key IDs (0..=7 are reserved by rmk for BLE profile control)
+// USER key IDs (0..=7 are reserved by rmk for BLE profile control).
+// Not used by the default keymap — exposed via Vial for remapping.
 pub(crate) const USER_CPI_UP: u8 = 8;
 pub(crate) const USER_CPI_DOWN: u8 = 9;
 pub(crate) const USER_CURSOR_TOGGLE: u8 = 10;
@@ -62,16 +63,16 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
     [
         layer!([
             [
-                k!(MouseBtn2),   user!(8),       user!(9),     user!(10),
-                user!(12),       user!(14),      k!(MouseBtn1), user!(15),
-                k!(I),           k!(J),          k!(K),         k!(L),
-                user!(16),       user!(17),      user!(18)
+                k!(MouseBtn2), k!(A), k!(B), k!(C),
+                k!(E), k!(G), k!(MouseBtn1), k!(H),
+                k!(I), k!(J), k!(K), k!(L),
+                k!(Kc5), k!(Kc6), k!(Kc7)
             ],
             [
                 k!(N), k!(M), k!(P), k!(O),
-                user!(11), user!(13), k!(S), k!(Q),
+                k!(D), k!(F), k!(S), k!(Q),
                 k!(R), k!(T), k!(V), k!(U),
-                k!(Kc0), k!(Kc9), user!(19)
+                k!(Kc0), k!(Kc9), k!(Kc8)
             ]
         ]),
         layer!([
@@ -93,16 +94,35 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
 }
 
 pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAYER] {
-    [
+    #[cfg(feature = "sensor-rotated-180")]
+    {
+        return [
+            [
+                encoder!(k!(W), k!(X)),                        // head
+                encoder!(k!(Y), k!(Z)),                        // chest
+                encoder!(k!(MouseWheelUp), k!(MouseWheelDown)), // leg: vertical wheel
+            ],
+            [
+                encoder!(a!(Transparent), a!(Transparent)),
+                encoder!(a!(Transparent), a!(Transparent)),
+                encoder!(a!(Transparent), a!(Transparent)),
+            ],
+        ];
+    }
+
+    #[cfg(not(feature = "sensor-rotated-180"))]
+    {
         [
-            encoder!(user!(8), user!(9)),    // head: CPI Up / Down
-            encoder!(user!(12), user!(13)),  // chest: Scroll Speed Up / Down
-            encoder!(user!(14), user!(15)),  // leg: Scroll Invert X / Y
-        ],
-        [
-            encoder!(a!(Transparent), a!(Transparent)),
-            encoder!(a!(Transparent), a!(Transparent)),
-            encoder!(a!(Transparent), a!(Transparent)),
-        ],
-    ]
+            [
+                encoder!(k!(W), k!(X)),                        // head
+                encoder!(k!(MouseWheelUp), k!(MouseWheelDown)), // chest: vertical wheel
+                encoder!(k!(Y), k!(Z)),                        // leg
+            ],
+            [
+                encoder!(a!(Transparent), a!(Transparent)),
+                encoder!(a!(Transparent), a!(Transparent)),
+                encoder!(a!(Transparent), a!(Transparent)),
+            ],
+        ]
+    }
 }
