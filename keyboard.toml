@@ -20,7 +20,11 @@ battery_adc_pin = "vddh"
 [layout]
 rows = 1
 cols = 2
-layers = 1
+layers = 5
 keymap = [
+    [["_", "_"]],
+    [["_", "_"]],
+    [["_", "_"]],
+    [["_", "_"]],
     [["_", "_"]]
 ]
